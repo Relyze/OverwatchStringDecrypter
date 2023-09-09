@@ -7,7 +7,7 @@ used_addresses = set()  # Maintain a set of used addresses, we don't want to acc
 decrypted_count = 0
 
 def main():
-    patterns = ["8B ? 83 E0 07", "8B ? ? ? ? ? 83 E0 07", "8B C2 48 8D ? ? ? ? ? ? ? ? ? ? 83 E0 07"]    
+    patterns = [ "8B ?? ?? ?? ?? ?? ?? FF FF FF 00", "8B ?? ?? ?? ?? ?? ?? ?? FF FF FF 00" ]
     print("=====BEGIN STRING DECRYPT=====")
 
     max_address = get_max_address()
@@ -21,13 +21,15 @@ def main():
             if function is None:
                 current_decrypt_addr = find_decrypt(idc.next_head(sig_found_addr), pattern, max_address)
                 continue
+            
+           
 
             while current_decrypt_addr > function.start_ea:
                 current_decrypt_addr = idc.prev_head(current_decrypt_addr)
                 if idc.print_insn_mnem(current_decrypt_addr) == "cmp":
                     break
 
-            if current_decrypt_addr <= function.start_ea:
+            if current_decrypt_addr < function.start_ea:
                 current_decrypt_addr = find_decrypt(idc.next_head(sig_found_addr), pattern, max_address)
                 continue
 
@@ -82,32 +84,31 @@ def find_decrypt(start_addr, pattern, max_address):
 
 def decrypt_string(current_decrypt_addr, is_encrypted_addr):
     global decrypted_count
+
     is_encrypted = ida_bytes.get_byte(is_encrypted_addr)
-    key_addr = is_encrypted_addr - 11
+    key_addr = is_encrypted_addr - 0xB
 
     if is_encrypted == 1:
         key = []
-        string_len = ida_bytes.get_word(key_addr + 8)
+        string_len = ida_bytes.get_word(key_addr + 0x8)
         encrypted_string = []
 
-        length = int(string_len & 0xFFFFFF)
-
-        if 0 < length < 1000:
-            for i in range(0, 8):
+        if (string_len & 0xFFFFFF):
+            for i in range(0, 0x8):
                 key.append(ida_bytes.get_byte(key_addr + i))
 
-            for i in range(0, length):
+            for i in range(0, (string_len & 0xFFFFFF)):
                 encrypted_string.append(ida_bytes.get_byte(key_addr + 0xC + i))
 
             decrypted_string = ""
             
-            for i in range(0, length):
+            for i in range(0, (string_len & 0xFFFFFF)):
                 decrypted_char_code = key[i & 7] ^ encrypted_string[i]
                 decrypted_string += chr(decrypted_char_code)
                 ida_bytes.patch_byte(key_addr + 0xC + i, ord(decrypted_string[i]))
 
             ida_bytes.create_strlit(key_addr + 0xC, string_len, 0)
-            ida_bytes.patch_byte(key_addr + 11, 0)  # is_encrypted
+            ida_bytes.patch_byte(key_addr + 0xB, 0)  # is_encrypted
 
             if "\n" in decrypted_string:
                 decrypted_string = decrypted_string.replace("\n", " ")
@@ -116,7 +117,7 @@ def decrypt_string(current_decrypt_addr, is_encrypted_addr):
                 decrypted_count += 1
                 print("%s -> %s" % (hex(current_decrypt_addr), decrypted_string))
     elif is_encrypted == 0:
-        string_len = ida_bytes.get_word(key_addr + 8)
+        string_len = ida_bytes.get_word(key_addr + 0x8)
         decrypted_string = ""
         
         for i in range(0, (string_len & 0xFFFFFF)):
