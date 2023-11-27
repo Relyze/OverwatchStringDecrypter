@@ -6,5 +6,3 @@ Note that this script is for IDA Pro, and should be used on a **dumped** version
 I will under **no circumstances** provide support for you, or explain how to dump the game, the script is provided **as is**.
 
 I have **not** tested this on other blizzard titles, the patterns may not be the same, so if you want to use it on another game, you may have to change them.
-
-this script does not obtain all possible strings, there are further patterns you can add to get many more results, or figure out how to walk the encrypted string list :)
