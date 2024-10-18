@@ -8,7 +8,6 @@ ENCRYPTED_FLAG = 1
 decrypted_addresses = set()
 decrypted_count = 0
 
-
 def get_max_address():
     max_address = 0
     segment = idc.get_first_seg()
@@ -16,9 +15,7 @@ def get_max_address():
     while segment != idc.BADADDR:
         max_address = max(max_address, idc.get_segm_end(segment))
         segment = idc.get_next_seg(segment)
-
     return max_address
-
 
 def find_cmp(function, current_decrypt_addr):
     while current_decrypt_addr > function.start_ea:
@@ -27,13 +24,11 @@ def find_cmp(function, current_decrypt_addr):
             return current_decrypt_addr
     return idc.BADADDR
 
-
-def find_decrypt(start_addr, compiled_pattern, max_address, image_base):
+def find_decrypt(start_addr, compiled_pattern, max_address):
     if compiled_pattern is None:
         return idc.BADADDR
 
     return ida_bytes.bin_search(start_addr, max_address, compiled_pattern, ida_bytes.BIN_SEARCH_FORWARD)
-
 
 def parse_pattern(pattern_str, image_base):
     pattern = ida_bytes.compiled_binpat_vec_t()
@@ -45,7 +40,6 @@ def parse_pattern(pattern_str, image_base):
 
     return pattern
 
-
 def main():
     global decrypted_addresses, decrypted_count
     decrypted_addresses.clear()
@@ -53,31 +47,37 @@ def main():
     image_base = idaapi.get_imagebase()
     max_address = get_max_address()
 
-    patterns = [ "8B ?? ?? ?? ?? ?? ?? FF FF FF 00",  "8B ?? ?? ?? ?? ?? ?? ?? FF FF FF 00" ]
-    compiled_patterns = [parse_pattern(pattern, idaapi.get_imagebase()) for pattern in patterns]
+    patterns = [ "8B ?? ?? ?? ?? ?? ?? FF FF FF 00 3B", "8B ?? ?? ?? ?? ?? ?? FF FF FF 00 ?? 3B", "8B ?? ?? ?? ?? ?? ?? ?? FF FF FF 00 3B", "8B ?? ?? ?? ?? ?? ?? ?? FF FF FF 00 ?? 3B" ]
+    compiled_patterns = [parse_pattern(pattern, image_base) for pattern in patterns]
 
-    print("===== BEGIN STRING DECRYPTION =====")
+    print("[OWSD] Begin Decryption")
     for compiled_pattern in compiled_patterns:
-        current_decrypt_addr = find_decrypt(0, compiled_pattern, max_address, image_base)
+        current_decrypt_addr = find_decrypt(0, compiled_pattern, max_address)
 
         while current_decrypt_addr != idc.BADADDR:
             try:
+                # Extract the address if current_decrypt_addr is a tuple
+                if isinstance(current_decrypt_addr, tuple):
+                    if current_decrypt_addr[0] > max_address:
+                        break
+
+                current_decrypt_addr = current_decrypt_addr[0]
                 function = idaapi.get_func(current_decrypt_addr)
                 sig_found_addr = current_decrypt_addr
 
                 if function is None:
-                    current_decrypt_addr = find_decrypt(idc.next_head(sig_found_addr), compiled_pattern, max_address, image_base)
+                    current_decrypt_addr = find_decrypt(idc.next_head(sig_found_addr), compiled_pattern, max_address)
                     continue
 
                 current_decrypt_addr = find_cmp(function, current_decrypt_addr)
 
                 if current_decrypt_addr < function.start_ea:
-                    current_decrypt_addr = find_decrypt(idc.next_head(sig_found_addr), compiled_pattern, max_address, image_base)
+                    current_decrypt_addr = find_decrypt(idc.next_head(sig_found_addr), compiled_pattern, max_address)
                     continue
 
                 is_encrypted_addr = idc.get_operand_value(current_decrypt_addr, 0)
                 if is_encrypted_addr < image_base:
-                    current_decrypt_addr = find_decrypt(idc.next_head(sig_found_addr), compiled_pattern, max_address, image_base)
+                    current_decrypt_addr = find_decrypt(idc.next_head(sig_found_addr), compiled_pattern, max_address)
                     continue
 
                 decrypt_string(current_decrypt_addr, is_encrypted_addr)
@@ -85,11 +85,10 @@ def main():
             except Exception as e:
                 print(f"[Error] Failed to process instruction at {hex(current_decrypt_addr)}: {e}")
 
-            current_decrypt_addr = find_decrypt(idc.next_head(sig_found_addr), compiled_pattern, max_address, image_base)
+            current_decrypt_addr = find_decrypt(idc.next_head(sig_found_addr), compiled_pattern, max_address)
 
-    print(f"Decrypted {decrypted_count} strings")
-    print("===== END STRING DECRYPTION =====")
-
+    print(f"[OWSD] Decrypted {decrypted_count} strings")
+    print("[OWSD] End Decryption")
 
 def decrypt_string(current_decrypt_addr, is_encrypted_addr):
     global decrypted_count, decrypted_addresses
@@ -136,7 +135,6 @@ def decrypt_string(current_decrypt_addr, is_encrypted_addr):
     except Exception as e:
         print(
             f"[Error] Failed to decrypt string at {hex(current_decrypt_addr)}: {e}")
-
 
 if __name__ == "__main__":
     main()
